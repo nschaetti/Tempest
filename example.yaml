@@ -1,0 +1,10 @@
+nx: 1000
+nz: 1000
+nt: 2000
+dx: 1.0
+dt: 0.001
+c0: 1500.0
+block_size_x: 16
+block_size_y: 16
+display_scale: 2.0
+display_interval: 5

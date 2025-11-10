@@ -35,22 +35,31 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -O3 -lineinfo
 set(CMAKE_CUDA_ARCHITECTURES 86)
 
 # ============================================================
-# Include directories
-# ============================================================
-include_directories(${PROJECT_SOURCE_DIR}/include)
-
-# ============================================================
 # Source files
 # ============================================================
-file(GLOB_RECURSE SRC_FILES
-        "${PROJECT_SOURCE_DIR}/src/*.cu"
-        "${PROJECT_SOURCE_DIR}/src/*.cpp"
+set(SRC_FILES
+        ${PROJECT_SOURCE_DIR}/src/main.cu
+        ${PROJECT_SOURCE_DIR}/src/display.cu
+        ${PROJECT_SOURCE_DIR}/src/init.cu
+        ${PROJECT_SOURCE_DIR}/src/simulation.cu
 )
+
+# ============================================================
+# External dependencies
+# ============================================================
+find_package(OpenGL REQUIRED)
+find_package(GLEW REQUIRED)
+find_package(glfw3 REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 # ============================================================
 # Executable
 # ============================================================
 add_executable(tempest_cuda ${SRC_FILES})
+
+target_include_directories(tempest_cuda PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+)
 
 # Optional: change binary output directory
 set_target_properties(tempest_cuda PROPERTIES
@@ -63,6 +72,17 @@ set_target_properties(tempest_cuda PROPERTIES
 target_compile_options(tempest_cuda PRIVATE
         $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
         $<$<COMPILE_LANGUAGE:CUDA>:--use_fast_math -Xcompiler -Wall>
+)
+
+target_link_libraries(tempest_cuda PRIVATE
+        OpenGL::GL
+        GLEW::GLEW
+        glfw
+        yaml-cpp
+)
+
+set_target_properties(tempest_cuda PROPERTIES
+        CUDA_RUNTIME_LIBRARY Shared
 )
 
 # ============================================================
