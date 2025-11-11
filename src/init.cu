@@ -1,5 +1,9 @@
 #include "tempest/init.hpp"
 
+/**
+ * The YAML loader is intentionally explicit: we call as<>() for every entry so
+ * beginners can see exactly which values are required by the simulation.
+ */
 SimulationConfig load_config(const std::string& path) {
     try {
         YAML::Node node = YAML::LoadFile(path);
@@ -20,6 +24,7 @@ SimulationConfig load_config(const std::string& path) {
     }
 }
 
+// Printing the configuration gives immediate feedback when running the binary.
 void print_config(const SimulationConfig& cfg) {
     std::cout << "Simulation settings:\n"
               << "  nx x nz        : " << cfg.nx << " x " << cfg.nz << "\n"

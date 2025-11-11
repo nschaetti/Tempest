@@ -1,6 +1,12 @@
 #include "tempest/display.hpp"
 
+//------------------------------------------------------------------------------
+// GLFW callbacks
+//------------------------------------------------------------------------------
+
 void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
+    // The viewport defines which portion of the window receives the rendered
+    // image. We simply stretch the quad to whatever size GLFW reports.
     glViewport(0, 0, width, height);
 }
 
@@ -9,6 +15,8 @@ void key_callback(GLFWwindow* window, int key, int, int action, int) {
     if (!state)
         return;
 
+    // ESC closes the window, P toggles pause, R requests a reset. Every action
+    // merely flips a flag; the main loop decides when to handle it.
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     } else if (key == GLFW_KEY_P && action == GLFW_PRESS) {
@@ -18,6 +26,11 @@ void key_callback(GLFWwindow* window, int key, int, int action, int) {
     }
 }
 
+//------------------------------------------------------------------------------
+// Shader creation helpers
+//------------------------------------------------------------------------------
+
+// Simple utility that compiles a GLSL shader and aborts on failure.
 static GLuint compile_shader(GLenum type, const char* src) {
     GLuint shader = glCreateShader(type);
     glShaderSource(shader, 1, &src, nullptr);
@@ -37,6 +50,7 @@ static GLuint compile_shader(GLenum type, const char* src) {
 }
 
 GLuint create_shader_program() {
+    // Vertex shader just forwards the quad coordinates to the rasterizer.
     static const char* vertex_src = R"(
         #version 330 core
         layout(location = 0) in vec2 aPos;
@@ -48,6 +62,7 @@ GLuint create_shader_program() {
         }
     )";
 
+    // Fragment shader samples the texture generated on the CUDA side.
     static const char* fragment_src = R"(
         #version 330 core
         in vec2 vTexCoord;
@@ -87,7 +102,6 @@ GLuint create_shader_program() {
 
     return program;
 }
-
 void create_fullscreen_quad(GLuint& vao, GLuint& vbo, GLuint& ebo) {
     const float vertices[] = {
         // positions   // texcoords
@@ -122,6 +136,11 @@ void create_fullscreen_quad(GLuint& vao, GLuint& vbo, GLuint& ebo) {
     glBindVertexArray(0);
 }
 
+//------------------------------------------------------------------------------
+// CUDA/OpenGL interop helpers
+//------------------------------------------------------------------------------
+
+// Translate scalar wave amplitudes into RGBA colors for display.
 __global__ void wave_to_color_kernel(float4* rgba, const float* p, int nx, int nz, float gain) {
     int ix = blockIdx.x * blockDim.x + threadIdx.x;
     int iz = blockIdx.y * blockDim.y + threadIdx.y;
@@ -151,16 +170,19 @@ void update_texture_from_field(cudaGraphicsResource_t& resource,
                                float gain,
                                GLuint texture,
                                GLuint pbo) {
+    // Map the OpenGL Pixel Buffer Object (PBO) so CUDA can write into it.
     CUDA_CHECK(cudaGraphicsMapResources(1, &resource, 0));
     float4* d_output = nullptr;
     size_t num_bytes = 0;
     CUDA_CHECK(cudaGraphicsResourceGetMappedPointer(reinterpret_cast<void**>(&d_output),
                                                     &num_bytes, resource));
 
+    // Launch the CUDA kernel that fills the buffer with colors.
     wave_to_color_kernel<<<color_grid, color_block>>>(d_output, d_field, nx, nz, gain);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaGraphicsUnmapResources(1, &resource, 0));
 
+    // Upload the freshly filled PBO into the visible texture.
     glBindTexture(GL_TEXTURE_2D, texture);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, nx, nz, GL_RGBA, GL_FLOAT, nullptr);
@@ -168,6 +190,7 @@ void update_texture_from_field(cudaGraphicsResource_t& resource,
 }
 
 void draw_fullscreen(GLuint program, GLuint vao, GLuint texture, int width, int height) {
+    // Make sure the quad always covers the entire framebuffer.
     glViewport(0, 0, width, height);
     glClear(GL_COLOR_BUFFER_BIT);
 
