@@ -1,3 +1,21 @@
+
+/*
+ * This file is part of Tempest.
+ *
+ * Tempest is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Tempest is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Tempest.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 #include "tempest/display.hpp"
 #include "tempest/init.hpp"
 #include "tempest/simulation.hpp"
@@ -27,41 +45,154 @@ int main(int argc, char** argv)
 
     print_config(cfg);
 
+    // Initialise GLFW (gestion des fenêtres + contexte OpenGL + input).
+    // glfwInit() retourne GLFW_TRUE si succès, 0 si échec.
     if (!glfwInit()) {
+        // Si glfwInit() a retourné 0, on affiche un message d’erreur sur la sortie d’erreur.
         std::cerr << "Failed to initialize GLFW" << std::endl;
+
+        // On quitte immédiatement le programme avec le code standard d’échec.
         return EXIT_FAILURE;
     }
 
-    // Ask GLFW for a modern OpenGL context (3.3 core) to keep things portable.
+    // ---------------------------------------------------------------
+    // Demande à GLFW de créer un contexte OpenGL moderne (version 3.3).
+    // Ces "hints" doivent être placés *avant* glfwCreateWindow.
+    // ---------------------------------------------------------------
+
+    // Version majeure du contexte OpenGL demandé : 3.x
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+
+    // Version mineure du contexte OpenGL demandé : x.3 → donc 3.3
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+
+    // Demande le "Core Profile" : supprime toutes les vieilles fonctions OpenGL
+    // (glBegin(), glVertex*, etc.) et force l'utilisation du pipeline moderne.
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
     // Window dimensions are derived from the simulation grid so one texel ~ one cell.
+    // On multiplie le nombre de cellules en X par le facteur d'échelle pour obtenir
+    // une largeur de fenêtre en pixels. Comme la multiplication produit un float,
+    // on utilise static_cast<int> pour convertir explicitement en entier.
+    //
+    // ⚠️ Pourquoi static_cast<int> ?
+    // - C’est la méthode C++ MODERNE pour convertir un type vers un autre.
+    // - Ici cfg.nx (int) * cfg.display_scale (float) donne un float.
+    // - GLFW exige des dimensions en pixels → donc un int.
+    // - static_cast<int>(...) convertit proprement le float en int.
+    // - Contrairement à (int)(...) du C, static_cast<> est plus sûr, plus clair,
+    //   et évite des conversions dangereuses.
+    //
+    // std::max(..., 100) garantit une largeur minimum de 100 pixels.
     int window_width = std::max(static_cast<int>(cfg.nx * cfg.display_scale), 100);
+
+    // Même logique pour la hauteur :
+    // - cfg.nz * cfg.display_scale → float
+    // - static_cast<int> → conversion contrôlée en entier
+    // - std::max(..., 100) → minimum 100 px
     int window_height = std::max(static_cast<int>(cfg.nz * cfg.display_scale), 100);
 
-    GLFWwindow* window = glfwCreateWindow(window_width, window_height, "libtempest CUDA", nullptr, nullptr);
+    // Création de la fenêtre GLFW avec les dimensions calculées.
+    // Arguments :
+    //   - window_width  : largeur de la fenêtre en pixels
+    //   - window_height : hauteur de la fenêtre en pixels
+    //   - "Tempest CUDA": titre affiché dans la barre de la fenêtre
+    //   - nullptr       : pas de monitor → donc mode fenêtré classique (pas fullscreen)
+    //
+    //   Dernier argument : le *contexte OpenGL à partager*  (share)
+    //   -----------------------------------------------------
+    //   Le paramètre final de glfwCreateWindow est un pointeur vers une autre
+    //   fenêtre GLFW dont on souhaite *partager le contexte OpenGL*.
+    //
+    //   🔹 C’est quoi un contexte OpenGL ?
+    //   - C’est un environnement complet contenant TOUT l’état OpenGL :
+    //       * shaders compilés
+    //       * textures
+    //       * VBO/VAO
+    //       * programmes GPU
+    //       * framebuffers
+    //       * objets OpenGL en général
+    //   - Chaque fenêtre GLFW possède son propre contexte.
+    //   - Un contexte = la “session” OpenGL d'une fenêtre.
+    //
+    //   🔹 C’est quoi *partager un contexte* ?
+    //   - Si on passe une autre fenêtre comme argument `share`, alors :
+    //       * les deux fenêtres utilisent le même contexte OpenGL,
+    //       * elles partagent donc les mêmes textures,
+    //       * les mêmes shaders,
+    //       * les mêmes buffers,
+    //       * les mêmes objets GPU,
+    //       * les mêmes ressources.
+    //   - Cela permet par exemple :
+    //       * d’avoir deux fenêtres affichant la *même* scène 3D,
+    //       * d’afficher une UI dans une fenêtre et un rendu dans l’autre,
+    //       * de faire du rendu off-screen dans un contexte et de l’afficher ailleurs.
+    //
+    //   🔹 Pourquoi ici on met nullptr ?
+    //   - Parce que Tempest utilise une seule fenêtre.
+    //   - Aucun besoin de partager un contexte OpenGL avec une autre fenêtre.
+    //   - Donc : *ce contexte n'est partagé avec personne*.
+    //
+    //   En résumé :
+    //       nullptr = "ne partage pas ce contexte OpenGL avec d’autres fenêtres".
+    //
+    GLFWwindow* window = glfwCreateWindow(window_width, window_height, "Tempest CUDA", nullptr, nullptr);
+
+    // Vérifie que la création de la fenêtre a réussi (sinon glfwCreateWindow retourne nullptr).
     if (!window) {
         std::cerr << "Failed to create GLFW window" << std::endl;
+
+        // Libère les ressources GLFW avant de quitter.
         glfwTerminate();
         return EXIT_FAILURE;
     }
 
+    // Associe le contexte OpenGL de cette fenêtre au thread courant.
+    // Toute commande OpenGL après cette ligne affectera *cette* fenêtre.
     glfwMakeContextCurrent(window);
-    glfwSwapInterval(0); // Disable vsync so the simulation is not throttled by the monitor.
 
-    glewExperimental = GL_TRUE; // Required to access modern extensions on older drivers.
+    // Désactive la synchronisation verticale (vsync).
+    // Sans vsync : la simulation tourne à pleine vitesse, non limitée par 60 Hz.
+    glfwSwapInterval(0);
+
+    // Active l’accès aux extensions modernes OpenGL pour GLEW.
+    // Certains drivers nécessitent ce flag pour exposer les fonctions récentes.
+    glewExperimental = GL_TRUE;
+
+        // Initialise GLEW pour charger dynamiquement l’ensemble des fonctions OpenGL.
+    // ⚠️ Cette fonction doit être appelée APRÈS glfwMakeContextCurrent.
     GLenum glew_status = glewInit();
+
+    // Vérifie que GLEW a bien chargé toutes les extensions OpenGL requises.
     if (glew_status != GLEW_OK) {
-        std::cerr << "Failed to initialize GLEW: " << glewGetErrorString(glew_status) << std::endl;
+        std::cerr << "Failed to initialize GLEW: "
+                  << glewGetErrorString(glew_status) << std::endl;
+
+        // Détruit la fenêtre créée et ferme GLFW proprement.
         glfwDestroyWindow(window);
         glfwTerminate();
         return EXIT_FAILURE;
     }
+
+    // Associe le contexte OpenGL de la fenêtre courante au thread actuel.
+    // Toute commande OpenGL après cette ligne agira sur *cette* fenêtre.
+    glfwMakeContextCurrent(window);
+
+    // Désactive la synchronisation verticale (vsync).
+    // Cela empêche le GPU d’attendre la fréquence de rafraîchissement du moniteur.
+    // Résultat : la simulation est rendue aussi vite que possible.
+    glfwSwapInterval(0);
+
+    // Indique à GLEW d'activer l'accès aux extensions modernes d’OpenGL.
+    // Nécessaire sur certains drivers (surtout Linux + NVIDIA).
+    glewExperimental = GL_TRUE;
+
+    // Initialise GLEW pour charger dynamiquement toutes les fonctions OpenGL.
+    // glewInit() doit être appelé *après* glfwMakeContextCurr
 
     glDisable(GL_DEPTH_TEST); // We draw a flat quad, so depth buffering is unnecessary.
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);

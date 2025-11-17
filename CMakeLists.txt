@@ -42,6 +42,7 @@ set(SRC_FILES
         ${PROJECT_SOURCE_DIR}/src/display.cu
         ${PROJECT_SOURCE_DIR}/src/init.cu
         ${PROJECT_SOURCE_DIR}/src/simulation.cu
+        src/surfdisp.cpp
 )
 
 # ============================================================
