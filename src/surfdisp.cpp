@@ -1,4 +1,5 @@
-#include <array>
+#include "tempest/surfdisp.hpp"
+
 #include <cmath>
 #include <iostream>
 #include <iomanip>
@@ -13,12 +14,6 @@
 
 namespace surfdisp
 {
-    constexpr int NL = 100;
-    constexpr int NP = 200;
-
-    using ArrNL = std::array<double, NL>;
-    using ArrNP = std::array<double, NP>;
-
     struct VarTerms
     {
         double w{};
@@ -824,64 +819,4 @@ namespace surfdisp
             }
         }
     }
-
 } // namespace surfdisp
-
-int main()
-{
-    using namespace surfdisp;
-
-    ArrNL thkm{}; // layer thicknesses (km)
-    ArrNL vpm{};  // P-wave velocity (km/s)
-    ArrNL vsm{};  // S-wave velocity (km/s)
-    ArrNL rhom{}; // density (g/cc)
-
-    // Simple 3-layer model with half-space
-    int nlayer = 3;
-
-    thkm[0] = 5.0;
-    thkm[1] = 10.0;
-    thkm[2] = 0.0; // half-space marker
-
-    vpm[0] = 5.5;
-    vpm[1] = 6.2;
-    vpm[2] = 6.8;
-
-    vsm[0] = 3.2;
-    vsm[1] = 3.6;
-    vsm[2] = 4.0;
-
-    rhom[0] = 2.5;
-    rhom[1] = 2.7;
-    rhom[2] = 2.8;
-
-    ArrNP t{};
-
-    int kmax = 200;
-    for (int i = 0; i < kmax; ++i)
-    {
-        t[i] = 0.1 + (static_cast<double>(i) / kmax) * 15.0;
-    }
-    /*for (int i = 0; i < kmax; ++i)
-    {
-        t[i] = 5 + i;
-    }*/
-
-    ArrNP cg{};
-    int err = 0;
-    surfdisp96(thkm, vpm, vsm, rhom, nlayer, 0, 2,  1, 1, kmax, t, cg, err);
-
-    if (err != 0)
-    {
-        std::cerr << "surfdisp96 finished with error code " << err << "\n";
-        return 1;
-    }
-
-    std::cout << "Rayleigh group velocities (mode 1, flat Earth):\n";
-    for (int i = 0; i < kmax; ++i)
-    {
-        std::cout << "T=" << std::setw(4) << t[i] << "s  G=" << std::setw(8) << std::setprecision(5) << cg[i] << " km/s\n";
-    }
-
-    return 0;
-}

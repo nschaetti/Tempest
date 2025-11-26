@@ -1,99 +1,52 @@
 cmake_minimum_required(VERSION 3.21)
+cmake_policy(SET CMP0148 NEW)
 
-# ============================================================
-# Project configuration
-# ============================================================
-project(TempestCUDA
-        LANGUAGES CXX CUDA
-        DESCRIPTION "High-performance CUDA simulator for acoustic and elastic wave propagation (ANFWI)"
+project(Tempest
+        LANGUAGES CXX
+        DESCRIPTION "CPU-friendly scientific simulators (ANFWI, SurfDisp, etc.)"
 )
 
-# ============================================================
-# General settings
-# ============================================================
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CUDA_STANDARD 17)
-set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+option(BUILD_PYTHON "Build Python Bindings" ON)
+option(BUILD_TOOLS "Build standalone tools" ON)
 
-# Enable separate compilation and device linking
-set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# ============================================================
-# Build type and optimization flags
-# ============================================================
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the build type" FORCE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the build type (Debug, Release)" FORCE)
 endif()
 
-# CUDA flags
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -O3 -lineinfo")
-
-# Optional: limit GPU architecture (adjust to your GPU)
-# Example for RTX 3090 / compute capability 8.6
-set(CMAKE_CUDA_ARCHITECTURES 86)
-
-# ============================================================
-# Source files
-# ============================================================
-set(SRC_FILES
-        ${PROJECT_SOURCE_DIR}/src/main.cu
-        ${PROJECT_SOURCE_DIR}/src/display.cu
-        ${PROJECT_SOURCE_DIR}/src/init.cu
-        ${PROJECT_SOURCE_DIR}/src/simulation.cu
+set(TEMPEST_SRC
+        src/anfwi/grid2d.cpp
+        src/anfwi/init.cpp
+        src/anfwi/simulation.cpp
+        src/anfwi/anfwi_runner.cpp
         src/surfdisp.cpp
 )
 
-# ============================================================
-# External dependencies
-# ============================================================
-find_package(OpenGL REQUIRED)
-find_package(GLEW REQUIRED)
-find_package(glfw3 REQUIRED)
-find_package(yaml-cpp REQUIRED)
-
-# ============================================================
-# Executable
-# ============================================================
-add_executable(tempest_cuda ${SRC_FILES})
-
-target_include_directories(tempest_cuda PRIVATE
+add_library(tempest STATIC ${TEMPEST_SRC})
+target_include_directories(tempest
+        PUBLIC
         ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src
 )
 
-# Optional: change binary output directory
-set_target_properties(tempest_cuda PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin
-)
-
-# ============================================================
-# Warnings & diagnostics
-# ============================================================
-target_compile_options(tempest_cuda PRIVATE
+target_compile_options(tempest PRIVATE
         $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
-        $<$<COMPILE_LANGUAGE:CUDA>:--use_fast_math -Xcompiler -Wall>
 )
 
-target_link_libraries(tempest_cuda PRIVATE
-        OpenGL::GL
-        GLEW::GLEW
-        glfw
-        yaml-cpp
-)
+if(BUILD_TOOLS)
+    add_subdirectory(apps)
+endif()
 
-set_target_properties(tempest_cuda PROPERTIES
-        CUDA_RUNTIME_LIBRARY Shared
-)
+if(BUILD_PYTHON)
+    add_subdirectory(python/pytempest)
+endif()
 
-# ============================================================
-# Summary (for debug)
-# ============================================================
 message(STATUS "============================================================")
-message(STATUS "Tempest-CUDA build configuration")
+message(STATUS "Tempest build configuration")
 message(STATUS "Build type:          ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ compiler:        ${CMAKE_CXX_COMPILER}")
-message(STATUS "CUDA compiler:       ${CMAKE_CUDA_COMPILER}")
-message(STATUS "CUDA architectures:  ${CMAKE_CUDA_ARCHITECTURES}")
-message(STATUS "Output binary:       ${PROJECT_SOURCE_DIR}/bin/tempest_cuda")
+message(STATUS "Output binaries:     ${PROJECT_SOURCE_DIR}/bin/")
 message(STATUS "============================================================")
